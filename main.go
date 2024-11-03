@@ -43,25 +43,6 @@ type Slave struct {
 	Cors int    `json:"cors"`
 }
 
-// func ParseGet(header map[string]string) (string, int, error) {
-// 	mod, ok := header["mod"] //single, thread, multiple
-// 	if !ok {
-// 		return "", 0, fmt.Errorf("cant read header [mode]")
-// 	}
-
-// 	code, ok := header["code"] //single, thread, multiple
-// 	if !ok {
-// 		return "", 0, fmt.Errorf("cant read header [code]")
-// 	}
-
-// 	number, err := strconv.Atoi(code)
-// 	if err != nil {
-// 		return "", 0, fmt.Errorf(err.Error())
-// 	}
-
-// 	return mod, number, nil
-// }
-
 type State struct {
 	Hash string `json:"hash"` //Delete, put in Master
 	Mod  string `json:"mod"`  //Delete
@@ -77,12 +58,6 @@ func (m *Master) Get(c *server.Ctx) {
 		c.ResWriter(err.Error())
 		return
 	}
-
-	// mod, index, err := ParseGet(c.GetHeader())
-	// if err != nil {
-	// 	c.ResWriter(err.Error())
-	// 	return
-	// }
 
 	m.Lock()
 	point := m.counterManager
