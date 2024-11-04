@@ -148,5 +148,7 @@ func main() {
 
 	mux.HandleFunc("start", master.Start)
 
-	server.ListenAndServe(":3000", mux)
+	if err := server.ListenAndServe(":3000", mux); err != nil{
+		log.Println(err)
+	}
 }

@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"strings"
@@ -11,7 +12,7 @@ import (
 const (
 	ReqCmdCode = "cmd"
 
-	Telnet = 2 //For testing
+	Telnet = 0 //For testing
 )
 
 type Server struct {
@@ -47,25 +48,33 @@ func (s *Server) HandleReq(conn net.Conn) {
 	buff := make([]byte, 4096)
 	defer conn.Close()
 
-	n, err := conn.Read(buff)
-	if err != nil {
-		log.Println(err)
-		return
-	}
+	for {
+		n, err := conn.Read(buff)
+		if err != nil {
+			log.Println(err)
+			if err == io.EOF {
+				break //kill the go routine
+			}
 
-	ctx := &Ctx{
-		Response: Response{Conn: conn},
-		header:   ParserReq(buff[:n-Telnet]),
-	}
-	cmd := ctx.header[ReqCmdCode]
+			continue
+		}
 
-	s.RLock()
-	defer s.RUnlock()
+		ctx := &Ctx{
+			Response: Response{Conn: conn},
+			header:   ParserReq(buff[:n-Telnet]),
+		}
+		cmd := ctx.header[ReqCmdCode]
 
-	if fn, ok := s.Router.fn[cmd]; ok {
-		fn(ctx)
-	} else {
-		conn.Write([]byte("\r wrong command\n"))
+		s.RLock()
+		defer s.RUnlock()
+
+		if fn, ok := s.Router.fn[cmd]; ok {
+			fn(ctx)
+		} else {
+			if _, err := conn.Write([]byte("\rwrong command\n")); err != nil {
+				log.Println(err)
+			}
+		}
 	}
 }
 
