@@ -22,6 +22,7 @@ type Master struct {
 	sync.RWMutex
 	slave []Slave
 	time.Time
+	net.Conn
 }
 
 func NewMaster(path string) (*Master, error) {
@@ -31,7 +32,18 @@ func NewMaster(path string) (*Master, error) {
 	}
 
 	slave := make([]Slave, 2)
-	json.Unmarshal(data, &slave)
+	if err := json.Unmarshal(data, &slave); err != nil {
+		return nil, err
+	}
+
+	for index := range slave {
+		conn, err := net.DialTimeout("tcp", slave[index].Addr, 5*time.Minute)
+		if err != nil {
+			continue
+		}
+
+		slave[index].Conn = conn
+	}
 
 	return &Master{
 		slave: slave,
@@ -39,6 +51,7 @@ func NewMaster(path string) (*Master, error) {
 }
 
 type Slave struct {
+	Conn net.Conn
 	Addr string `json:"addr"`
 	Cors int    `json:"cors"`
 }
@@ -100,13 +113,17 @@ func (m *Master) Start(c *server.Ctx) {
 		numberOfNodes = 1
 	}
 
+	m.Conn = c.Conn
+
 	for index := range m.slave[:numberOfNodes] {
 		go func() {
-			conn, err := net.DialTimeout("tcp", m.slave[index].Addr, 5*time.Minute)
-			if err != nil {
-				c.ResWriter(err.Error())
-				return
-			}
+			// conn, err := net.DialTimeout("tcp", m.slave[index].Addr, 5*time.Minute)
+			// if err != nil {
+			// 	c.ResWriter(err.Error())
+			// 	return
+			// }
+
+			// go m.Notification()
 
 			m.Lock()
 			point := m.counterManager
@@ -128,7 +145,7 @@ func (m *Master) Start(c *server.Ctx) {
 			}
 
 			format := fmt.Sprintf("cmd: start\n body: %s\n", data)
-			_, err = conn.Write([]byte(format))
+			_, err = m.slave[index].Conn.Write([]byte(format))
 			if err != nil {
 				c.ResWriter(err.Error())
 				//add range to stack
@@ -136,6 +153,42 @@ func (m *Master) Start(c *server.Ctx) {
 		}()
 	}
 }
+
+func (m *Master) Cancel(c *server.Ctx) {
+	fmt.Println("stop process is activated")
+
+	var wg sync.WaitGroup
+
+	wg.Add(len(m.slave))
+	for _, conn := range m.slave {
+		go func(wg *sync.WaitGroup) {
+			timeoutDuration := 10 * time.Second
+			if err := conn.Conn.SetDeadline(time.Now().Add(timeoutDuration)); err != nil {
+				
+			}
+
+			if _, err := conn.Conn.Write([]byte("asd")); err != nil {
+
+			}
+
+			wg.Done()
+		}(&wg)
+	}
+
+	wg.Wait()
+	fmt.Println("all server is finish job")
+	fmt.Println("job is canceled")
+}
+
+// func (m *Master) Notification() {
+// 	ticker := time.NewTicker(15 * time.Second)
+// 	defer ticker.Stop()
+
+// 	for {
+// 		<-ticker.C
+// 		m.Conn.Write([]byte(string(m.counterManager)))
+// 	}
+// }
 
 func main() {
 	master, err := NewMaster(cmd.Load())
@@ -146,7 +199,9 @@ func main() {
 
 	mux := server.NewRouter()
 
+	mux.HandleFunc("get", master.Get)
 	mux.HandleFunc("start", master.Start)
+	mux.HandleFunc("cancel", master.Cancel)
 
 	if err := server.ListenAndServe(":3000", mux); err != nil {
 		log.Println(err)
